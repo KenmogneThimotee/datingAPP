@@ -13,8 +13,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name   = models.CharField(max_length=100)
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     date_of_bith = models.DateField(null=True, blank=True)
+    
     validated = models.BooleanField(default=False)
-    validation_code = models.CharField(max_length=5)
+    validation_code = models.CharField(max_length=5, null=True)
+    
+    reset_code = models.CharField(max_length=5, null=True)
+    reset_code_validated = models.BooleanField(default=False)
     
     objects = UserManager()
 

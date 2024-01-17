@@ -3,12 +3,9 @@ from rest_framework import serializers
 from .models import User
 from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
-from random import randint
+from django.core.mail import send_mail
+from .helpers import random_with_N_digits
 
-def random_with_N_digits(n):
-    range_start = 10**(n-1)
-    range_end = (10**n)-1
-    return randint(range_start, range_end)
 
 class CustumTokenObtainPairSerializer(TokenObtainPairSerializer):
 
@@ -57,23 +54,46 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         user.set_password(validated_data['password'])
         user.save()
+        
+        subject = 'Welcome to Trust'
+        message = f'Thank you for creating an account! your verification code is {user.validation_code}'
+        from_email = 'thimoteekenmogne@gmail.com'
+        recipient_list = [user.email]
+        send_mail(subject, message, from_email, recipient_list)
 
         return user
     
 
-class AccountValidationSerialiazer(serializers.ModelSerializer):
+class PasswordResetCodeSerializer(serializers.Serializer):
+
+    email = serializers.EmailField(required=True)
     
-    validation_code = serializers.CharField(max_length=5)
+class ValidatePasswordResetCodeSerializer(serializers.Serializer):
+
+    email = serializers.EmailField(required=True)
+    reset_code = serializers.CharField(max_length=5, required=True)
+
+class ResetPasswordSerializer(serializers.ModelSerializer):
     
-    class Meta:
-        model = User
-        
-    def update(self, instance, validated_data):
-        
-        if validated_data['validation_code'] != instance.validation_code:
-            raise serializers.ValidationError({"validation": "Validation code is not correct"})
-        
-        instance.validated = True
-        instance.save()
-        return instance
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    password2 = serializers.CharField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        password = attrs.get('password')
+        password2 = attrs.get('password2')
+        if password != password2:
+            raise serializers.ValidationError("Password and Confirm Password doesn't match")
+        return attrs
     
+class ChangePasswordSerializer(serializers.ModelSerializer):
+    
+    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
+    password2 = serializers.CharField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        password = attrs.get('password')
+        password2 = attrs.get('password2')
+        if password != password2:
+            raise serializers.ValidationError("Password and Confirm Password doesn't match")
+        return attrs

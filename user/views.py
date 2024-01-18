@@ -2,17 +2,27 @@ from django.shortcuts import render
 
 # Create your views here.
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from .serializers import CustumTokenObtainPairSerializer
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from .serializers import (CustumTokenObtainPairSerializer, UserSerializers,
+                          LikesSerializers, DislikesSerializers,
+                          ListUserListSerializer)
 from rest_framework.status import HTTP_400_BAD_REQUEST, HTTP_200_OK
 from rest_framework.response import Response
-from .models import User
+from .models import User, Likes, Dislikes
 from .serializers import RegisterSerializer, PasswordResetCodeSerializer, ValidatePasswordResetCodeSerializer, ResetPasswordSerializer
 from rest_framework import generics
 from rest_framework.decorators import api_view, authentication_classes
 from rest_framework_simplejwt import authentication
 from .helpers import random_with_N_digits
 from django.core.mail import send_mail
+from rest_framework.viewsets import ModelViewSet
+from .permissions import UserPermission
+
+from django.contrib.gis.db.models.functions import Distance
+from django.contrib.gis.geos import Point
+from django.db.models import F, IntegerField
+from django.db.models.functions import Least
+from django.shortcuts import get_object_or_404
 
 
 
@@ -20,11 +30,78 @@ class CustumObtainTokenPairView(TokenObtainPairView):
     permission_classes = (AllowAny,)
     serializer_class = CustumTokenObtainPairSerializer
 
+class UserViewset(ModelViewSet):
+    
+    permission_classes = (UserPermission)
+    serializer_class = UserSerializers
+    queryset = User.objects.all()
+
+class LikesViewset(ModelViewSet):
+    
+    permission_classes = [IsAuthenticated]
+    serializer_class = LikesSerializers
+    queryset = Likes.objects.all()
+    
+class DislikesViewset(ModelViewSet):
+    
+    permission_classes = [IsAuthenticated]
+    serializer_class = DislikesSerializers
+    queryset = Dislikes.objects.all()
+    
+class ProposalsApiView(generics.ListAPIView):
+
+    serializer_class = ListUserListSerializer
+    queryset = User.objects.all()
+
+    def filter_queryset(self, queryset):
+        queryset = super().filter_queryset(queryset)
+        finder = get_object_or_404(
+            User,
+            email=self.kwargs.get('email')
+        )
+        current_user_location = Point(
+            float(self.kwargs.get('current_longitude')),
+            float(self.kwargs.get('current_latitude')),
+            srid=4326
+        )
+        # we annotate each object with smaller of two radius:
+        # - requesting user
+        # - and each user preferred_radius
+        # we annotate queryset with distance between given in params location
+        # (current_user_location) and each user location
+        queryset = queryset.annotate(
+            smaller_radius=Least(
+                finder.preferred_radius,
+                F('preferred_radius'),
+                output_field=IntegerField()
+            ),
+            distance=Distance('last_location', current_user_location)
+        ).filter(
+            distance__lte=F('smaller_radius') * 1000
+        ).order_by(
+            'distance'
+        )
+
+        queryset = queryset.filter(
+            sex=finder.sex if finder.homo else finder.get_opposed_sex,
+            preferred_sex=finder.sex,
+            age__range=(
+                finder.preferred_age_min,
+                finder.preferred_age_max),
+            preferred_age_min__lte=finder.age,
+            preferred_age_max__gte=finder.age,
+        ).exclude(
+            nickname=finder.nickname
+        )
+        return queryset
+
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = (AllowAny,)
     serializer_class = RegisterSerializer
+    
+
     
 
 @api_view(['POST'])

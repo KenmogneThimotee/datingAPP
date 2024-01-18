@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from datetime import timedelta
 from pathlib import Path
-
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework_simplejwt',
     'user',
-    'rest_framework'
+    'rest_framework',
 ]
 
 MIDDLEWARE = [
@@ -78,12 +78,24 @@ WSGI_APPLICATION = 'datingApp.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+   'default': {
+       'ENGINE': 'django.contrib.gis.db.backends.postgis',
+       'NAME': os.environ('DATABSE_NAME'),
+       'USER': os.environ('DATABASE_USER'),
+       'PASSWORD': os.environ('DATABASE_PASSWORD'),
+       'HOST': os.environ('DATABASE_HOST'),
+       'PORT': os.environ('DATABASE_PORT'),
+   }
 }
+
 
 
 # Password validation
@@ -179,8 +191,8 @@ SIMPLE_JWT = {
 AUTH_USER_MODEL = 'user.User'
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
+EMAIL_HOST = os.environ('EMAIL_PASSWORD')
+EMAIL_PORT = os.environ('EMAIL_PORT')
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'thimoteekenmogne@gmail.com'
-EMAIL_HOST_PASSWORD = 'llxzpeadnubnoyht'
+EMAIL_HOST_USER = os.environ('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ('EMAIL_PASSWORD')

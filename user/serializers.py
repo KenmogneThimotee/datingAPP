@@ -1,6 +1,6 @@
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework import serializers
-from .models import Likes, User, SEX_CHOICES, Match
+from .models import Dislikes, Likes, User, SEX_CHOICES, Match
 from rest_framework.validators import UniqueValidator
 from django.contrib.auth.password_validation import validate_password
 from django.core.mail import send_mail
@@ -29,13 +29,22 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
-
+    
     class Meta:
         model = User
-        fields = ('password', 'password2', 'email', 'first_name', 'last_name')
+        fields = ('password', 'password2', 'email', 'first_name', 'last_name', 'sex',
+                  'preferred_sex', 'preferred_age_min',
+                  'preferred_age_max', 'last_location', 'preferred_radius', 'profile_picture')
         extra_kwargs = {
             'first_name': {'required': True},
-            'last_name': {'required': True}
+            'last_name': {'required': True},
+            'sex': {'required': True},
+            'preferred_sex': {'required': True},
+            'preferred_age_min': {'required': True},
+            'preferred_age_max': {'required': True},
+            'last_location': {'required': True},
+            'preferred_radius': {'required': True},
+            'profile_picture': {'required': True}
         }
 
     def validate(self, attrs):
@@ -50,6 +59,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
+            sex=validated_data['sex'],
+            preferred_sex=validated_data['preferred_sex'],
+            preferred_age_min=validated_data['preferred_age_min'],
+            preferred_age_max=validated_data['preferred_age_max'],
+            last_location=validated_data['last_location'],
+            preferred_radius=validated_data['preferred_radius'],
             validation_code=random_with_N_digits(5)
         )
 
@@ -74,7 +89,7 @@ class ValidatePasswordResetCodeSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
     reset_code = serializers.CharField(max_length=5, required=True)
 
-class ResetPasswordSerializer(serializers.ModelSerializer):
+class ResetPasswordSerializer(serializers.Serializer):
     
     email = serializers.EmailField(required=True)
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
@@ -87,7 +102,7 @@ class ResetPasswordSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Password and Confirm Password doesn't match")
         return attrs
     
-class ChangePasswordSerializer(serializers.ModelSerializer):
+class ChangePasswordSerializer(serializers.Serializer):
     
     password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True)
@@ -103,27 +118,49 @@ class UserSerializers(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['email', 'first_name', 'last_name', 'date_of_bith']
+        fields = ['email', 'first_name', 'last_name', 'date_of_birth', 'sex',
+                  'preferred_sex', 'preferred_age_min',
+                  'preferred_age_max', 'last_location', 'preferred_radius', 'profile_picture']
         
 class LikesSerializers(serializers.ModelSerializer):
     
-    user = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
-    liked = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    user = serializers.PrimaryKeyRelatedField(required=True, queryset=User.objects.all())
+    liked = serializers.PrimaryKeyRelatedField(required=True, queryset=User.objects.all())
     
     class Meta:
         model = Likes
-        fields = '__all__'
-    
+        fields = ['user', 'liked', 'date']
+        
+    def validate(self, attrs):
+        
+        request = self.context.get('request')
+        
+        user = User.objects.get(email=attrs['user'])
+        liked = User.objects.get(email=attrs['liked'])
+        
+        if user.email != request.user.email:
+            raise serializers.ValidationError("You are not allowed to perform this action")
+        elif len(Likes.objects.filter(user=user, liked=liked)) > 1:
+            raise serializers.ValidationError("You have already like this user")
+        elif user.email == liked.email:
+            raise serializers.ValidationError("This is the same user it's not allowed")
+        else:
+            return super().validate(attrs)
+        
+
     def create(self, validated_data):
+
         
-        user = User.objects.get(pk=validated_data[user])
-        liked = User.objects.get(pk=validated_data[liked])
+        user = User.objects.get(email=validated_data['user'])
+        liked = User.objects.get(email=validated_data['liked'])
         
-        if user in liked.likes_set.all():
+        
+        if user.email in [usr.liked.email for usr in liked.initial_user.all()]:
             
-            match = Match(user1=user, user2=liked)
+            match = Match.objects.create(user1=user, user2=liked)
+            match.user1 = user 
+            match.user2 = liked
             match.save()
-        
         
         likes = Likes(user=user, liked=liked)
         likes.save()
@@ -132,12 +169,42 @@ class LikesSerializers(serializers.ModelSerializer):
         
 class DislikesSerializers(serializers.ModelSerializer):
     
-    user = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
-    disliked = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    user = serializers.PrimaryKeyRelatedField(required=True, queryset=User.objects.all())
+    disliked = serializers.PrimaryKeyRelatedField(required=True, queryset=User.objects.all())
     
     class Meta:
-        model = Likes
+        model = Dislikes
         fields = '__all__'
+        
+    def validate(self, attrs):
+        
+        request = self.context.get('request')
+        
+        user = User.objects.get(email=attrs['user'])
+        liked = User.objects.get(email=attrs['liked'])
+        
+        if user.email != request.user.email:
+            raise serializers.ValidationError("You are not allowed to perform this action")
+        elif len(Dislikes.objects.filter(user=user, liked=liked)) > 1:
+            raise serializers.ValidationError("You have already dislike this user")
+        elif user.email == liked.email:
+            raise serializers.ValidationError("This is the same user it's not allowed")
+        else:
+            return super().validate(attrs)
+        
+
+    def create(self, validated_data):
+
+        
+        user = User.objects.get(email=validated_data['user'])
+        disliked = User.objects.get(email=validated_data['disliked'])
+        
+    
+        
+        dislikes = Likes(user=user, liked=disliked)
+        dislikes.save()
+        
+        return dislikes
         
 class ListUserListSerializer(serializers.ModelSerializer):
     preferred_sex = serializers.ChoiceField(choices=SEX_CHOICES, default='male')
@@ -147,7 +214,9 @@ class ListUserListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'first_name', 'last_name', 'date_of_bith']
+        fields = ['smaller_radius', 'distance','id', 'email', 'first_name', 'last_name', 'date_of_birth', 'sex',
+                  'preferred_sex', 'preferred_age_min',
+                  'preferred_age_max', 'last_location', 'preferred_radius', 'profile_picture']
 
     def get_distance(self, obj):
         if hasattr(obj, 'distance'):

@@ -1,9 +1,10 @@
+import datetime
 from django.shortcuts import render
 
 # Create your views here.
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
-from .serializers import (CustumTokenObtainPairSerializer, UserSerializers,
+from .serializers import (ChangePasswordSerializer, CustumTokenObtainPairSerializer, UserSerializers,
                           LikesSerializers, DislikesSerializers,
                           ListUserListSerializer)
 from rest_framework.status import HTTP_400_BAD_REQUEST, HTTP_200_OK
@@ -32,7 +33,7 @@ class CustumObtainTokenPairView(TokenObtainPairView):
 
 class UserViewset(ModelViewSet):
     
-    permission_classes = (UserPermission)
+    permission_classes = (UserPermission,)
     serializer_class = UserSerializers
     queryset = User.objects.all()
 
@@ -54,16 +55,16 @@ class ProposalsApiView(generics.ListAPIView):
     queryset = User.objects.all()
 
     def filter_queryset(self, queryset):
+        
         queryset = super().filter_queryset(queryset)
-        finder = get_object_or_404(
-            User,
-            email=self.kwargs.get('email')
-        )
-        current_user_location = Point(
-            float(self.kwargs.get('current_longitude')),
-            float(self.kwargs.get('current_latitude')),
-            srid=4326
-        )
+        finder = self.request.user
+        print("Finder : ", finder)
+        current_user_location = finder.last_location
+        # Point(
+        #     float(self.kwargs.get('current_longitude')),
+        #     float(self.kwargs.get('current_latitude')),
+        #     srid=4326
+        # )
         # we annotate each object with smaller of two radius:
         # - requesting user
         # - and each user preferred_radius
@@ -81,28 +82,39 @@ class ProposalsApiView(generics.ListAPIView):
         ).order_by(
             'distance'
         )
+        
+        min_years = finder.preferred_age_min
+        max_years = finder.preferred_age_max
+        
+        curr_year = datetime.date.today().year
+        
+        min_birth_year = curr_year - min_years
+        min_birth_year = datetime.date(min_birth_year, 1, 1)
+        
+        max_birth_year = curr_year - max_years
+        max_birth_year = datetime.date(max_birth_year, 1, 1)
+        
+        print("FINDER: ", finder.date_of_birth)
+        curr_year = datetime.date.today()
+        finder_age =  curr_year.year - finder.date_of_birth.year - ((curr_year.month, curr_year.day) < (finder.date_of_birth.month, finder.date_of_birth.day))
+
 
         queryset = queryset.filter(
-            sex=finder.sex if finder.homo else finder.get_opposed_sex,
+            sex=finder.preferred_sex,
             preferred_sex=finder.sex,
-            age__range=(
-                finder.preferred_age_min,
-                finder.preferred_age_max),
-            preferred_age_min__lte=finder.age,
-            preferred_age_max__gte=finder.age,
+            preferred_age_min__gte=finder.preferred_age_min,
+            preferred_age_max__lte=finder.preferred_age_max,
         ).exclude(
-            nickname=finder.nickname
+            id=finder.id
         )
+
         return queryset
 
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = (AllowAny,)
-    serializer_class = RegisterSerializer
-    
-
-    
+    serializer_class = RegisterSerializer    
 
 @api_view(['POST'])
 @authentication_classes([authentication.JWTAuthentication])
@@ -124,23 +136,28 @@ def validate_code(request):
 @authentication_classes([authentication.JWTAuthentication])
 def resend_validation_code(request):
     
-    user = request.user
-    user.validation_code = random_with_N_digits(5)
-    user.save()
     
-    subject = 'Welcome to Trust'
-    message = f'Thank you for creating an account! your verification code is {user.validation_code}'
-    from_email = 'thimoteekenmogne@gmail.com'
-    recipient_list = [user.email]
-    send_mail(subject, message, from_email, recipient_list)
+    user = request.user
+    
+    if not user.validated:
+        user.validation_code = random_with_N_digits(5)
+        user.save()
+        
+        subject = 'Welcome to Trust'
+        message = f'Thank you for creating an account! your verification code is {user.validation_code}'
+        from_email = 'thimoteekenmogne@gmail.com'
+        recipient_list = [user.email]
+        send_mail(subject, message, from_email, recipient_list)
 
-    return Response({"message": "Verification code sent"})
+        return Response({"message": "Verification code sent"})
+    else:
+        return Response({"message": "User already validated"}, status=HTTP_400_BAD_REQUEST)
+
 
 @api_view(['POST'])
-@authentication_classes([AllowAny])
 def send_password_reset_code(request):
     
-    serializer = PasswordResetCodeSerializer(request.data)
+    serializer = PasswordResetCodeSerializer(data=request.data)
     
     if serializer.is_valid():
 
@@ -159,15 +176,14 @@ def send_password_reset_code(request):
 
         return Response({"message": "Verification code sent"})
     else:
-        return Response({"message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=HTTP_400_BAD_REQUEST)
 
         
     
 @api_view(['POST'])
-@authentication_classes([AllowAny])
 def validate_password_reset_code(request):
     
-    serializer = ValidatePasswordResetCodeSerializer(request.data)
+    serializer = ValidatePasswordResetCodeSerializer(data=request.data)
     
     if serializer.is_valid():
         email = serializer.validated_data['email']
@@ -185,10 +201,9 @@ def validate_password_reset_code(request):
 
 
 @api_view(['POST'])
-@authentication_classes([AllowAny])
 def reset_password(request):
     
-    serializer = ResetPasswordSerializer(request.data)
+    serializer = ResetPasswordSerializer(data=request.data)
     
     if serializer.is_valid():
         user = User.objects.get(email=serializer.validated_data['email'])
@@ -209,17 +224,14 @@ def reset_password(request):
 @authentication_classes([authentication.JWTAuthentication])
 def change_password(request):
     
-    serializer = ResetPasswordSerializer(request.data)
+    serializer = ChangePasswordSerializer(data=request.data)
     
     if serializer.is_valid():
         user = request.user
-        if user.reset_code_validated:
-            user.set_password(serializer.validated_data['password'])
-            user.save()
+        user.set_password(serializer.validated_data['password'])
+        user.save()
             
-            return Response({"message": "Password changed successfully"})
-        else:
-            return Response({"message": "Not allowed"}, status=HTTP_400_BAD_REQUEST)
+        return Response({"message": "Password changed successfully"})
     else:
         return Response({"message": serializer.errors}, status=HTTP_400_BAD_REQUEST)
         

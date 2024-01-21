@@ -13,16 +13,17 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from datetime import timedelta
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
-
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ('SECRET_KEY')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -42,6 +43,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'user',
     'rest_framework',
+    'django.contrib.gis'
 ]
 
 MIDDLEWARE = [
@@ -88,11 +90,11 @@ WSGI_APPLICATION = 'datingApp.wsgi.application'
 DATABASES = {
    'default': {
        'ENGINE': 'django.contrib.gis.db.backends.postgis',
-       'NAME': os.environ('DATABSE_NAME'),
-       'USER': os.environ('DATABASE_USER'),
-       'PASSWORD': os.environ('DATABASE_PASSWORD'),
-       'HOST': os.environ('DATABASE_HOST'),
-       'PORT': os.environ('DATABASE_PORT'),
+       'NAME': os.environ.get('DATABSE_NAME'),
+       'USER': os.environ.get('DATABASE_USER'),
+       'PASSWORD': os.environ.get('DATABASE_PASSWORD'),
+       'HOST': os.environ.get('DATABASE_HOST'),
+       'PORT': os.environ.get('DATABASE_PORT'),
    }
 }
 
@@ -149,7 +151,7 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=5),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=120),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": False,
@@ -191,8 +193,14 @@ SIMPLE_JWT = {
 AUTH_USER_MODEL = 'user.User'
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.environ('EMAIL_HOST')
-EMAIL_PORT = os.environ('EMAIL_PORT')
+EMAIL_HOST = os.environ.get('EMAIL_HOST')
+EMAIL_PORT = os.environ.get('EMAIL_PORT')
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.environ('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = os.environ('EMAIL_PASSWORD')
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_PASSWORD')
+
+
+STATIC_URL = "profile_pictures/"
+STATICFILES_DIRS = [
+    BASE_DIR / "profile_pictures",
+]

@@ -204,3 +204,4 @@ STATIC_URL = "profile_pictures/"
 STATICFILES_DIRS = [
     BASE_DIR / "profile_pictures",
 ]
+SESSION_COOKIE_SECURE = True
